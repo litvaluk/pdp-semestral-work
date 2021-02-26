@@ -450,7 +450,7 @@ int numberOfRemainingPieces(Board board) {
   return n;
 }
 
-int calls = 0;
+long long int calls = 0;
 
 int dfs(int currentDepth, Board board, int maxPieces, int remaining, int upperBound, int rookIndex, int knightIndex) {
   calls++;
