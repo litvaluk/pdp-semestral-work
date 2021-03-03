@@ -1,3 +1,15 @@
+// NI-PDP 20/21 - Lukáš Litvan
+// ===================================================================================
+// Task 1 - Recursive sequential algorithm (DFS-BB) for the rook and knight problem
+// ===================================================================================
+// The number of the dfs function calls is roughly in the same order of magnitude as
+// the provided reference solution (sometimes less sometimes greater). For example,
+// when running on instance "vaj4.txt", it achieves 621 calls (2e+3 calls in reference
+// solution) and on instance "vaj3.txt", the number of calls is 226e+6 (170e+6 calls
+// in reference solution). It is implemented in such a way, that it is ready for
+// paralelization (always passing new copies of variables/structs into the function).
+// This fact makes the program not so time efficient (due to the copying).
+
 #include <iostream>
 #include <algorithm>
 
@@ -51,6 +63,7 @@ Board initBoard(int k) {
   return board;
 }
 
+// finds and returns the position of the rook
 int getRookIndex(Board board) {
   for (int i = 0; i < board.k*board.k; i++) {
     if (board.board[i] == ROOK) {
@@ -60,15 +73,17 @@ int getRookIndex(Board board) {
   exit(1);
 }
 
+// finds and returns the position of the knight
 int getKnightIndex(Board board) {
   for (int i = 0; i < board.k*board.k; i++) {
     if (board.board[i] == KNIGHT) {
       return i;
     }
   }
-  exit(1);
+  exit(2);
 }
 
+// returns true if the knight can take any piece when positioned at the specified index, otherwise false
 bool knightCanTake(int index, Board board) {
   int i = index / board.k;
   int j = index % board.k;
@@ -148,6 +163,7 @@ bool knightCanTake(int index, Board board) {
   return false;
 }
 
+// returns moves available to the knight positioned at the specified index
 Moves nextKnight(int index, Board board) {
   Moves moves;
   moves.length = 0;
@@ -155,7 +171,7 @@ Moves nextKnight(int index, Board board) {
   int i = index / board.k;
   int j = index % board.k;
 
-  // # - - - -
+  // - # - - -
   // - - - - -
   // - - K - -
   // - - - - -
@@ -168,7 +184,7 @@ Moves nextKnight(int index, Board board) {
     moves.length++;
   }
 
-  // - - - - #
+  // - - - # -
   // - - - - -
   // - - K - -
   // - - - - -
@@ -261,6 +277,7 @@ Moves nextKnight(int index, Board board) {
   return moves;
 }
 
+// returns true if the rook can take any piece when positioned at the specified index, otherwise false
 bool rookCanTake(int index, Board board) {
   // up
   for (int i = index-board.k; i >= 0; i-=board.k) {
@@ -305,6 +322,7 @@ bool rookCanTake(int index, Board board) {
   return false;  
 }
 
+// returns moves available to the rook positioned at the specified index
 Moves nextRook(int index, Board board) {
   Moves moves;
   moves.length = 0;
@@ -430,16 +448,19 @@ void printMoves(Moves moves) {
   cout << endl;
 }
 
+// compare function for move sorting
 bool compareMoves(const Move &a, const Move &b) {
   return a.value > b.value;
 }
 
+// returns board with performed move (chesspiece move from square A to square B)
 Board executeMove(int from, int to, Board board) {
   board.board[to] = board.board[from];
   board.board[from] = EMPTY;
   return board;
 }
 
+// returns number of pieces left for given board
 int numberOfRemainingPieces(Board board) {
   int n = 0;
   for (int i = 0; i < board.k*board.k; i++) {
@@ -452,14 +473,20 @@ int numberOfRemainingPieces(Board board) {
 
 long long int calls = 0;
 
+// DFS-BB algorithm for the rook and knight problem
 Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves, Moves bestSolution) {
   calls++;
+  
+  // if there are no pieces left, return current moves as a solution
   if (remaining <= 0) {
     return currentMoves;
   }
+
+  // branch and bound condition
   if (currentDepth + remaining >= bestSolution.length) {
     return bestSolution;
   }
+
   if (currentDepth%2 == 0) {
     // rook on the move
     Moves moves = nextRook(rookIndex, board);
@@ -472,10 +499,16 @@ Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookI
       executedMoves.length++;
 
       int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
+
+      // run dfs on the new board
       Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves, bestSolution);
+      
+      // no need to continue if the solution is the best as it can get
       if (res.length == maxPieces) {
         return res;
       }
+
+      // if the found solution is better than the one found so far, replace it
       if (res.length < bestSolution.length) {
         bestSolution = res;
       }
@@ -492,10 +525,16 @@ Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookI
       executedMoves.length++;
 
       int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
+
+      // run dfs on the new board
       Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves, bestSolution);
+      
+      // no need to continue if the solution is the best as it can get
       if (res.length == maxPieces) {
         return res;
       }
+
+      // if the found solution is better than the one found so far, replace it
       if (res.length < bestSolution.length) {
         bestSolution = res;
       }
@@ -530,13 +569,12 @@ int main(int argc, char const *argv[]) {
   
   Board board = initBoard(k);
   int remaining = numberOfRemainingPieces(board);
-  
   Moves currentMoves;
   currentMoves.length = 0;
   Moves bestSolution;
   bestSolution.length = maxDepth;
-
-  Moves res = dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves, bestSolution);
-  printSolution(res, k);
+  
+  printSolution(dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves, bestSolution), k);
+  
   return 0;
 }
