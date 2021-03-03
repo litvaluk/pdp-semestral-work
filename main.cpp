@@ -1,7 +1,6 @@
 #include <iostream>
 #include <algorithm>
-
-#define MAX_K 19
+#include <vector>
 
 using namespace std;
 
@@ -12,73 +11,62 @@ enum Square {
   PIECE
 };
 
-struct Board {
-  Square board[MAX_K*MAX_K];
-  int k;
-};
-
 struct Move {
   int index;
   int value;
 };
 
-struct Moves {
-  Move moves[2*MAX_K-2];
-  int length;
-};
-
-Board initBoard(int k) {
-  Board board;
-  board.k = k;
-  for (int i = 0; i < board.k*board.k; i++) {
+vector<Square> initBoard(int k) {
+  vector<Square> board;
+  for (int i = 0; i < k*k; i++) {
     char piece;
     cin >> piece;
     switch (piece) {
     case '-':
-      board.board[i] = EMPTY;
+      board.push_back(EMPTY);
       break;
     case 'P':
-      board.board[i] = PIECE;
+      board.push_back(PIECE);
       break;
     case 'V':
-      board.board[i] = ROOK;
+      board.push_back(ROOK);
       break;
     case 'J':
-      board.board[i] = KNIGHT;
+      board.push_back(KNIGHT);
       break;
     }
   }
   return board;
 }
 
-int getRookIndex(Board board) {
-  for (int i = 0; i < board.k*board.k; i++) {
-    if (board.board[i] == ROOK) {
+int getRookIndex(vector<Square> board, int k) {
+  for (int i = 0; i < k*k; i++) {
+    if (board[i] == ROOK) {
       return i;
     }
   }
   exit(1);
 }
 
-int getKnightIndex(Board board) {
-  for (int i = 0; i < board.k*board.k; i++) {
-    if (board.board[i] == KNIGHT) {
+int getKnightIndex(vector<Square> board, int k) {
+  for (int i = 0; i < k*k; i++) {
+    if (board[i] == KNIGHT) {
       return i;
     }
   }
   exit(1);
 }
 
-bool knightCanTake(int index, Board board) {
-  int i = index / board.k;
-  int j = index % board.k;
+bool knightCanTake(int index, vector<Square> board, int k) {
+  int i = index / k;
+  int j = index % k;
 
   // - # - - -
   // - - - - -
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 1 && j > 0 && board.board[index - 2*board.k - 1] == PIECE) {
+  if (i > 1 && j > 0 && board[index - 2*k - 1] == PIECE) {
     return true;
   }
 
@@ -87,7 +75,7 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 1 && j < board.k-1 && board.board[index - 2*board.k + 1] == PIECE) {
+  if (i > 1 && j < k-1 && board[index - 2*k + 1] == PIECE) {
     return true;
   }
 
@@ -96,7 +84,7 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 0 && j > 1 && board.board[index - board.k - 2] == PIECE) {
+  if (i > 0 && j > 1 && board[index - k - 2] == PIECE) {
     return true;
   }
 
@@ -105,7 +93,7 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 0 && j < board.k-2 && board.board[index - board.k + 2] == PIECE) {
+  if (i > 0 && j < k-2 && board[index - k + 2] == PIECE) {
     return true;
   }
 
@@ -114,7 +102,7 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // # - - - -
   // - - - - -
-  if (i < board.k-1 && j > 1 && board.board[index + board.k - 2] == PIECE) {
+  if (i < k-1 && j > 1 && board[index + k - 2] == PIECE) {
     return true;
   }
 
@@ -123,7 +111,7 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // - - - - #
   // - - - - -
-  if (i < board.k-1 && j < board.k-2 && board.board[index + board.k + 2] == PIECE) {
+  if (i < k-1 && j < k-2 && board[index + k + 2] == PIECE) {
     return true;
   }
 
@@ -132,7 +120,7 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // - - - - -
   // - # - - -
-  if (i < board.k-2 && j > 0 && board.board[index + 2*board.k - 1] == PIECE) {
+  if (i < k-2 && j > 0 && board[index + 2*k - 1] == PIECE) {
     return true;
   }
 
@@ -141,31 +129,29 @@ bool knightCanTake(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - # -
-  if (i < board.k-2 && j < board.k-1 && board.board[index + 2*board.k + 1] == PIECE) {
+  if (i < k-2 && j < k-1 && board[index + 2*k + 1] == PIECE) {
     return true;
   }
 
   return false;
 }
 
-Moves nextKnight(int index, Board board) {
-  Moves moves;
-  moves.length = 0;
+vector<Move> nextKnight(int index, vector<Square> board, int k) {
+  vector<Move> moves;
 
-  int i = index / board.k;
-  int j = index % board.k;
+  int i = index / k;
+  int j = index % k;
 
   // # - - - -
   // - - - - -
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 1 && j > 0 && board.board[index - 2*board.k - 1] != ROOK) {
+  if (i > 1 && j > 0 && board[index - 2*k - 1] != ROOK) {
     Move move;
-    move.index = index - 2*board.k - 1;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index - 2*k - 1;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - #
@@ -173,12 +159,11 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 1 && j < board.k-1 && board.board[index - 2*board.k + 1] != ROOK) {
+  if (i > 1 && j < k-1 && board[index - 2*k + 1] != ROOK) {
     Move move;
-    move.index = index - 2*board.k + 1;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index - 2*k + 1;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - -
@@ -186,12 +171,11 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 0 && j > 1 && board.board[index - board.k - 2] != ROOK) {
+  if (i > 0 && j > 1 && board[index - k - 2] != ROOK) {
     Move move;
-    move.index = index - board.k - 2;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index - k - 2;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - -
@@ -199,12 +183,11 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - - -
-  if (i > 0 && j < board.k-2 && board.board[index - board.k + 2] != ROOK) {
+  if (i > 0 && j < k-2 && board[index - k + 2] != ROOK) {
     Move move;
-    move.index = index - board.k + 2;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index - k + 2;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - -
@@ -212,12 +195,11 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // # - - - -
   // - - - - -
-  if (i < board.k-1 && j > 1 && board.board[index + board.k - 2] != ROOK) {
+  if (i < k-1 && j > 1 && board[index + k - 2] != ROOK) {
     Move move;
-    move.index = index + board.k - 2;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index + k - 2;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - -
@@ -225,12 +207,11 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // - - - - #
   // - - - - -
-  if (i < board.k-1 && j < board.k-2 && board.board[index + board.k + 2] != ROOK) {
+  if (i < k-1 && j < k-2 && board[index + k + 2] != ROOK) {
     Move move;
-    move.index = index + board.k + 2;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index + k + 2;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - -
@@ -238,12 +219,11 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // - - - - -
   // - # - - -
-  if (i < board.k-2 && j > 0 && board.board[index + 2*board.k - 1] != ROOK) {
+  if (i < k-2 && j > 0 && board[index + 2*k - 1] != ROOK) {
     Move move;
-    move.index = index + 2*board.k - 1;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index + 2*k - 1;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
 
   // - - - - -
@@ -251,53 +231,52 @@ Moves nextKnight(int index, Board board) {
   // - - K - -
   // - - - - -
   // - - - # -
-  if (i < board.k-2 && j < board.k-1 && board.board[index + 2*board.k + 1] != ROOK) {
+  if (i < k-2 && j < k-1 && board[index + 2*k + 1] != ROOK) {
     Move move;
-    move.index = index + 2*board.k + 1;
-    move.value = board.board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board) ? 1 : 0);
-    moves.moves[moves.length] = move;
-    moves.length++;
+    move.index = index + 2*k + 1;
+    move.value = board[move.index] == PIECE ? 2 : (knightCanTake(move.index, board, k) ? 1 : 0);
+    moves.push_back(move);
   }
   return moves;
 }
 
-bool rookCanTake(int index, Board board) {
+bool rookCanTake(int index, vector<Square> board, int k) {
   // up
-  for (int i = index-board.k; i >= 0; i-=board.k) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index-k; i >= 0; i-=k) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       return true;
     }
   }
 
   // right
-  for (int i = index+1; i%board.k != 0; i++) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index+1; i%k != 0; i++) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       return true;
     }
   }
 
   // down
-  for (int i = index+board.k; i < board.k*board.k; i+=board.k) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index+k; i < k*k; i+=k) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       return true;
     }
   }
 
   // left
-  for (int i = index-1; i%board.k != board.k-1 && i >= 0; i--) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index-1; i%k != k-1 && i >= 0; i--) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       return true;
     }
   }
@@ -305,107 +284,98 @@ bool rookCanTake(int index, Board board) {
   return false;  
 }
 
-Moves nextRook(int index, Board board) {
-  Moves moves;
-  moves.length = 0;
+vector<Move> nextRook(int index, vector<Square> board, int k) {
+  vector<Move> moves;
 
   // up
-  for (int i = index-board.k; i >= 0; i-=board.k) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index-k; i >= 0; i-=k) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       Move move;
       move.index = i;
       move.value = 2;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      moves.push_back(move);
       break;
     }
-    if (board.board[i] == EMPTY) {
+    if (board[i] == EMPTY) {
       Move move;
       move.index = i;
-      move.value = rookCanTake(i, board) ? 1 : 0;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      move.value = rookCanTake(i, board, k) ? 1 : 0;
+      moves.push_back(move);
     }
   }
   
   // right
-  for (int i = index+1; i%board.k != 0; i++) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index+1; i%k != 0; i++) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       Move move;
       move.index = i;
       move.value = 2;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      moves.push_back(move);
       break;
     }
-    if (board.board[i] == EMPTY) {
+    if (board[i] == EMPTY) {
       Move move;
       move.index = i;
-      move.value = rookCanTake(i, board) ? 1 : 0;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      move.value = rookCanTake(i, board, k) ? 1 : 0;
+      moves.push_back(move);
     }
   }
   
   // down
-  for (int i = index+board.k; i < board.k*board.k; i+=board.k) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index+k; i < k*k; i+=k) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       Move move;
       move.index = i;
       move.value = 2;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      moves.push_back(move);
       break;
     }
-    if (board.board[i] == EMPTY) {
+    if (board[i] == EMPTY) {
       Move move;
       move.index = i;
-      move.value = rookCanTake(i, board) ? 1 : 0;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      move.value = rookCanTake(i, board, k) ? 1 : 0;
+      moves.push_back(move);
     }
   }
 
   // left
-  for (int i = index-1; i%board.k != board.k-1 && i >= 0; i--) {
-    if (board.board[i] == KNIGHT) {
+  for (int i = index-1; i%k != k-1 && i >= 0; i--) {
+    if (board[i] == KNIGHT) {
       break;
     }
-    if (board.board[i] == PIECE) {
+    if (board[i] == PIECE) {
       Move move;
       move.index = i;
       move.value = 2;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      moves.push_back(move);
       break;
     }
-    if (board.board[i] == EMPTY) {
+    if (board[i] == EMPTY) {
       Move move;
       move.index = i;
-      move.value = rookCanTake(i, board) ? 1 : 0;
-      moves.moves[moves.length] = move;
-      moves.length++;
+      move.value = rookCanTake(i, board, k) ? 1 : 0;
+      moves.push_back(move);
     }
   }
 
   return moves;
 }
 
-void printBoard(Board board) {
-  for (int i = 0; i < board.k*board.k; i++) {
-    if (i != 0 && i%board.k == 0) {
+void printBoard(vector<Square> board, int k) {
+  for (int i = 0; i < k*k; i++) {
+    if (i != 0 && i%k == 0) {
       cout << endl;
     }
-    switch (board.board[i]) {
+    switch (board[i]) {
     case EMPTY:
       cout << "- ";
       break;
@@ -423,9 +393,9 @@ void printBoard(Board board) {
   cout << endl;
 }
 
-void printMoves(Moves moves) {
-  for (int i = 0; i < moves.length; i++) {
-    cout << moves.moves[i].index << "(" << moves.moves[i].value << ") ";
+void printMoves(vector<Move> moves) {
+  for (int i = 0; i < moves.size(); i++) {
+    cout << moves[i].index << "(" << moves[i].value << ") ";
   }
   cout << endl;
 }
@@ -434,16 +404,16 @@ bool compareMoves(const Move &a, const Move &b) {
   return a.value > b.value;
 }
 
-Board executeMove(int from, int to, Board board) {
-  board.board[to] = board.board[from];
-  board.board[from] = EMPTY;
+vector<Square> executeMove(int from, int to, vector<Square> board, int k) {
+  board[to] = board[from];
+  board[from] = EMPTY;
   return board;
 }
 
-int numberOfRemainingPieces(Board board) {
+int numberOfRemainingPieces(vector<Square> board, int k) {
   int n = 0;
-  for (int i = 0; i < board.k*board.k; i++) {
-    if (board.board[i] == PIECE) {
+  for (int i = 0; i < k*k; i++) {
+    if (board[i] == PIECE) {
       n++;
     }
   }
@@ -452,51 +422,49 @@ int numberOfRemainingPieces(Board board) {
 
 long long int calls = 0;
 
-Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves, Moves bestSolution) {
+vector<Move> dfs(int currentDepth, vector<Square> board, int k, int maxPieces, int remaining, int rookIndex, int knightIndex, vector<Move> currentMoves, vector<Move> bestSolution) {
   calls++;
   if (remaining <= 0) {
     return currentMoves;
   }
-  if (currentDepth + remaining >= bestSolution.length) {
+  if (currentDepth + remaining >= bestSolution.size()) {
     return bestSolution;
   }
   if (currentDepth%2 == 0) {
     // rook on the move
-    Moves moves = nextRook(rookIndex, board);
-    sort(moves.moves, &moves.moves[moves.length], compareMoves);
-    for (int i = 0; i < moves.length; i++) {
-      Board executed = executeMove(rookIndex, moves.moves[i].index, board);
+    vector<Move> moves = nextRook(rookIndex, board, k);
+    sort(moves.begin(), moves.end(), compareMoves);
+    for (int i = 0; i < moves.size(); i++) {
+      vector<Square> executed = executeMove(rookIndex, moves[i].index, board, k);
       
-      Moves executedMoves = currentMoves;
-      executedMoves.moves[executedMoves.length] = moves.moves[i];
-      executedMoves.length++;
+      vector<Move> executedMoves = currentMoves;
+      executedMoves.push_back(moves[i]);
 
-      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-      Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves, bestSolution);
-      if (res.length == maxPieces) {
+      int newRemaining = board[moves[i].index] == PIECE ? remaining-1 : remaining;
+      vector<Move> res = dfs(currentDepth+1, executed, k, maxPieces, newRemaining, moves[i].index, knightIndex, executedMoves, bestSolution);
+      if (res.size() == maxPieces) {
         return res;
       }
-      if (res.length < bestSolution.length) {
+      if (res.size() < bestSolution.size()) {
         bestSolution = res;
       }
     }
   } else {
     // knight on the move
-    Moves moves = nextKnight(knightIndex, board);
-    sort(moves.moves, &moves.moves[moves.length], compareMoves);
-    for (int i = 0; i < moves.length; i++) {
-      Board executed = executeMove(knightIndex, moves.moves[i].index, board);
+    vector<Move> moves = nextKnight(knightIndex, board, k);
+    sort(moves.begin(), moves.end(), compareMoves);
+    for (int i = 0; i < moves.size(); i++) {
+      vector<Square> executed = executeMove(knightIndex, moves[i].index, board, k);
 
-      Moves executedMoves = currentMoves;
-      executedMoves.moves[executedMoves.length] = moves.moves[i];
-      executedMoves.length++;
+      vector<Move> executedMoves = currentMoves;
+      executedMoves.push_back(moves[i]);
 
-      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-      Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves, bestSolution);
-      if (res.length == maxPieces) {
+      int newRemaining = board[moves[i].index] == PIECE ? remaining-1 : remaining;
+      vector<Move> res = dfs(currentDepth+1, executed, k, maxPieces, newRemaining, rookIndex, moves[i].index, executedMoves, bestSolution);
+      if (res.size() == maxPieces) {
         return res;
       }
-      if (res.length < bestSolution.length) {
+      if (res.size() < bestSolution.size()) {
         bestSolution = res;
       }
     }
@@ -504,11 +472,11 @@ Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookI
   return bestSolution;
 }
 
-void printSolution(Moves solutionMoves, int k) {
-  cout << "Total moves: " << solutionMoves.length << endl << "Number of dfs function calls: " << calls << endl << "Moves:" << endl;
-  for (int i = 0; i < solutionMoves.length; i++) {
-    int rowIndex = solutionMoves.moves[i].index / k;
-    int colIndex = solutionMoves.moves[i].index % k;
+void printSolution(vector<Move> solutionMoves, int k) {
+  cout << "Total moves: " << solutionMoves.size() << endl << "Number of dfs function calls: " << calls << endl << "Moves:" << endl;
+  for (int i = 0; i < solutionMoves.size(); i++) {
+    int rowIndex = solutionMoves[i].index / k;
+    int colIndex = solutionMoves[i].index % k;
 
     if (i%2 == 0) {
       cout << "  ROOK   -> (";
@@ -517,7 +485,7 @@ void printSolution(Moves solutionMoves, int k) {
     }
 
     cout << rowIndex+1 << ", " << colIndex+1 << ")";
-    if (solutionMoves.moves[i].value == 2) {
+    if (solutionMoves[i].value == 2) {
       cout << " *";
     }
     cout << endl;
@@ -528,15 +496,13 @@ int main(int argc, char const *argv[]) {
   int k, maxDepth;
   cin >> k >> maxDepth;
   
-  Board board = initBoard(k);
-  int remaining = numberOfRemainingPieces(board);
+  vector<Square> board = initBoard(k);
+  int remaining = numberOfRemainingPieces(board, k);
   
-  Moves currentMoves;
-  currentMoves.length = 0;
-  Moves bestSolution;
-  bestSolution.length = maxDepth;
+  vector<Move> currentMoves;
+  vector<Move> bestSolution(maxDepth);
 
-  Moves res = dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves, bestSolution);
+  vector<Move> res = dfs(0, board, k, remaining, remaining, getRookIndex(board, k), getKnightIndex(board, k), currentMoves, bestSolution);
   printSolution(res, k);
   return 0;
 }
