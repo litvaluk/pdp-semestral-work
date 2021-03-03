@@ -452,31 +452,32 @@ int numberOfRemainingPieces(Board board) {
 
 long long int calls = 0;
 
-int dfs(int currentDepth, Board board, int maxPieces, int remaining, int upperBound, int rookIndex, int knightIndex) {
+Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves, Moves bestSolution) {
   calls++;
   if (remaining <= 0) {
-    return currentDepth;
+    return currentMoves;
   }
-  if (currentDepth >= upperBound) {
-    return upperBound;
-  }
-  if (currentDepth + remaining >= upperBound) {
-    return upperBound;
+  if (currentDepth + remaining >= bestSolution.length) {
+    return bestSolution;
   }
   if (currentDepth%2 == 0) {
     // rook on the move
     Moves moves = nextRook(rookIndex, board);
     sort(moves.moves, &moves.moves[moves.length], compareMoves);
     for (int i = 0; i < moves.length; i++) {
-      // for each move, do dfs
       Board executed = executeMove(rookIndex, moves.moves[i].index, board);
+      
+      Moves executedMoves = currentMoves;
+      executedMoves.moves[executedMoves.length] = moves.moves[i];
+      executedMoves.length++;
+
       int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-      int res = dfs(currentDepth+1, executed, maxPieces, newRemaining, upperBound, moves.moves[i].index, knightIndex);
-      if (res == maxPieces) {
+      Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves, bestSolution);
+      if (res.length == maxPieces) {
         return res;
       }
-      if (res < upperBound) {
-        upperBound = res;
+      if (res.length < bestSolution.length) {
+        bestSolution = res;
       }
     }
   } else {
@@ -484,47 +485,58 @@ int dfs(int currentDepth, Board board, int maxPieces, int remaining, int upperBo
     Moves moves = nextKnight(knightIndex, board);
     sort(moves.moves, &moves.moves[moves.length], compareMoves);
     for (int i = 0; i < moves.length; i++) {
-      // for each move, do dfs
       Board executed = executeMove(knightIndex, moves.moves[i].index, board);
+
+      Moves executedMoves = currentMoves;
+      executedMoves.moves[executedMoves.length] = moves.moves[i];
+      executedMoves.length++;
+
       int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-      int res = dfs(currentDepth+1, executed, maxPieces, newRemaining, upperBound, rookIndex, moves.moves[i].index);
-      if (res == maxPieces) {
+      Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves, bestSolution);
+      if (res.length == maxPieces) {
         return res;
       }
-      if (res < upperBound) {
-        upperBound = res;
+      if (res.length < bestSolution.length) {
+        bestSolution = res;
       }
     }
   }
-  return upperBound;
+  return bestSolution;
 }
 
+void printSolution(Moves solutionMoves, int k) {
+  cout << "Total moves: " << solutionMoves.length << endl << "Number of dfs function calls: " << calls << endl << "Moves:" << endl;
+  for (int i = 0; i < solutionMoves.length; i++) {
+    int rowIndex = solutionMoves.moves[i].index / k;
+    int colIndex = solutionMoves.moves[i].index % k;
+
+    if (i%2 == 0) {
+      cout << "  ROOK   -> (";
+    } else {
+      cout << "  KNIGHT -> (";
+    }
+
+    cout << rowIndex+1 << ", " << colIndex+1 << ")";
+    if (solutionMoves.moves[i].value == 2) {
+      cout << " *";
+    }
+    cout << endl;
+  }  
+}
 
 int main(int argc, char const *argv[]) {
   int k, maxDepth;
   cin >> k >> maxDepth;
   
   Board board = initBoard(k);
-  printBoard(board);
+  int remaining = numberOfRemainingPieces(board);
+  
+  Moves currentMoves;
+  currentMoves.length = 0;
+  Moves bestSolution;
+  bestSolution.length = maxDepth;
 
-  // Moves rookMoves = nextRook(getRookIndex(board), board);
-  // sort(rookMoves.moves, &rookMoves.moves[rookMoves.length], compareMoves);
-  // cout << endl << "Rook: ";
-  // printMoves(rookMoves);
-  // cout << "Knight: ";
-  // Moves knightMoves = nextKnight(getKnightIndex(board), board);
-  // sort(knightMoves.moves, &knightMoves.moves[knightMoves.length], compareMoves);
-  // printMoves(knightMoves);
-
-  // Board newBoard = executeMove(getKnightIndex(board), 17, board);
-  // cout << endl;
-  // printBoard(newBoard);
-  // knightMoves = nextKnight(getKnightIndex(newBoard), newBoard);
-  // sort(knightMoves.moves, &knightMoves.moves[knightMoves.length], compareMoves);
-  // printMoves(knightMoves);
-
-  int n = numberOfRemainingPieces(board);
-  cout << dfs(0, board, n, n, maxDepth, getRookIndex(board), getKnightIndex(board)) << endl;
-  cout << calls << endl;
+  Moves res = dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves, bestSolution);
+  printSolution(res, k);
   return 0;
 }
