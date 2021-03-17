@@ -1,8 +1,18 @@
 // NI-PDP 20/21 - Lukáš Litvan
-// ===================================================================================
-// Task 2 - OpenMP task paralelism for the rook and knight problem
-// ===================================================================================
-// TODO DESCRIPTION
+// ========================================================================================
+// Task 2 - OpenMP task parallelism for the rook and knight problem
+// ========================================================================================
+// The program can be run with one optional argument, which specifies the number of threads
+// used in the computation. When the argument is not specified, the thread count is set
+// using the OpenMP function "omp_get_max_threads".
+// The task parallelism overhead is quite big, so the improvement (task parallelism)
+// is not a big game changer. For example, on input "vaj3.txt", the non-parallel version
+// takes approximately 38 seconds to compute. On this input and using task parallelism, 
+// best results were measured (on my personal computer), when running on 2 threads, while
+// marking dfs calls as OpenMP tasks, when currentDepth is less then threadCount/2. In this
+// case, the running time is approximately 27 seconds. Dfs call count can vary, since the
+// taskwait directive is not used (the algorithm may find different but correct solution
+// each run).
 
 #include <iostream>
 #include <algorithm>
@@ -471,58 +481,10 @@ long long int calls = 0;
 int threadCount;
 Moves bestSolution;
 
-// sequential dfs
-void dfsSeq(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves) {
-  calls++;
-
-  // if there are no pieces left, set current moves as a solution, if better
-  if (remaining <= 0 && currentDepth < bestSolution.length) {
-    #pragma omp critical
-      bestSolution = currentMoves;
-    return;
-  }
-
-  // branch and bound condition
-  if (currentDepth + remaining >= bestSolution.length) {
-    return;
-  }
-
-  if (currentDepth%2 == 0) {
-    // rook on the move
-    Moves moves = nextRook(rookIndex, board);
-    sort(moves.moves, &moves.moves[moves.length], compareMoves);
-    for (int i = 0; i < moves.length; i++) {
-      Board executed = executeMove(rookIndex, moves.moves[i].index, board);
-      
-      Moves executedMoves = currentMoves;
-      executedMoves.moves[executedMoves.length] = moves.moves[i];
-      executedMoves.length++;
-
-      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-      
-      dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
-    }
-  } else {
-    // knight on the move
-    Moves moves = nextKnight(knightIndex, board);
-    sort(moves.moves, &moves.moves[moves.length], compareMoves);
-    for (int i = 0; i < moves.length; i++) {
-      Board executed = executeMove(knightIndex, moves.moves[i].index, board);
-
-      Moves executedMoves = currentMoves;
-      executedMoves.moves[executedMoves.length] = moves.moves[i];
-      executedMoves.length++;
-
-      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-
-      dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
-    }
-  }
-}
-
-// DFS-BB algorithm for the rook and knight problem
+// DFS-BB algorithm for the rook and knight problem using OpenMP tasks
 void dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves) {
-  calls++;
+  #pragma omp atomic
+    calls++;
   
   // if there are no pieces left, set current moves as a solution, if better
   if (remaining <= 0 && currentDepth < bestSolution.length) {
@@ -553,9 +515,8 @@ void dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIn
       if (currentDepth < threadCount/2) {
         #pragma omp task
           dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
-        #pragma omp taskwait
       } else {
-        dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
+        dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
       }
     }
   } else {
@@ -575,9 +536,8 @@ void dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIn
       if (currentDepth < threadCount/2) {
         #pragma omp task
           dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
-        #pragma omp taskwait
       } else {
-        dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
+        dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
       }
     }
   }
