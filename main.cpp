@@ -1,17 +1,13 @@
 // NI-PDP 20/21 - Lukáš Litvan
 // ===================================================================================
-// Task 1 - Recursive sequential algorithm (DFS-BB) for the rook and knight problem
+// Task 2 - OpenMP task paralelism for the rook and knight problem
 // ===================================================================================
-// The number of the dfs function calls is roughly in the same order of magnitude as
-// the provided reference solution (sometimes less sometimes greater). For example,
-// when running on instance "vaj4.txt", it achieves 621 calls (2e+3 calls in reference
-// solution) and on instance "vaj3.txt", the number of calls is 226e+6 (170e+6 calls
-// in reference solution). It is implemented in such a way, that it is ready for
-// paralelization (always passing new copies of variables/structs into the function).
-// This fact makes the program not so time efficient (due to the copying).
+// TODO DESCRIPTION
 
 #include <iostream>
 #include <algorithm>
+#include <omp.h>
+#include <cstdio>
 
 #define MAX_K 19
 
@@ -472,19 +468,72 @@ int numberOfRemainingPieces(Board board) {
 }
 
 long long int calls = 0;
+int threadCount;
+Moves bestSolution;
 
-// DFS-BB algorithm for the rook and knight problem
-Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves, Moves bestSolution) {
+// sequential dfs
+void dfsSeq(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves) {
   calls++;
-  
-  // if there are no pieces left, return current moves as a solution
-  if (remaining <= 0) {
-    return currentMoves;
+
+  // if there are no pieces left, set current moves as a solution, if better
+  if (remaining <= 0 && currentDepth < bestSolution.length) {
+    #pragma omp critical
+      bestSolution = currentMoves;
+    return;
   }
 
   // branch and bound condition
   if (currentDepth + remaining >= bestSolution.length) {
-    return bestSolution;
+    return;
+  }
+
+  if (currentDepth%2 == 0) {
+    // rook on the move
+    Moves moves = nextRook(rookIndex, board);
+    sort(moves.moves, &moves.moves[moves.length], compareMoves);
+    for (int i = 0; i < moves.length; i++) {
+      Board executed = executeMove(rookIndex, moves.moves[i].index, board);
+      
+      Moves executedMoves = currentMoves;
+      executedMoves.moves[executedMoves.length] = moves.moves[i];
+      executedMoves.length++;
+
+      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
+      
+      dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
+    }
+  } else {
+    // knight on the move
+    Moves moves = nextKnight(knightIndex, board);
+    sort(moves.moves, &moves.moves[moves.length], compareMoves);
+    for (int i = 0; i < moves.length; i++) {
+      Board executed = executeMove(knightIndex, moves.moves[i].index, board);
+
+      Moves executedMoves = currentMoves;
+      executedMoves.moves[executedMoves.length] = moves.moves[i];
+      executedMoves.length++;
+
+      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
+
+      dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
+    }
+  }
+}
+
+// DFS-BB algorithm for the rook and knight problem
+void dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves) {
+  calls++;
+  
+  // if there are no pieces left, set current moves as a solution, if better
+  if (remaining <= 0 && currentDepth < bestSolution.length) {
+    #pragma omp critical
+      bestSolution = currentMoves;
+    return;
+  }
+
+  // branch and bound condition
+  if (currentDepth + remaining >= bestSolution.length) {
+    return;
   }
 
   if (currentDepth%2 == 0) {
@@ -501,16 +550,12 @@ Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookI
       int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
 
       // run dfs on the new board
-      Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves, bestSolution);
-      
-      // no need to continue if the solution is the best as it can get
-      if (res.length == maxPieces) {
-        return res;
-      }
-
-      // if the found solution is better than the one found so far, replace it
-      if (res.length < bestSolution.length) {
-        bestSolution = res;
+      if (currentDepth < threadCount/2) {
+        #pragma omp task
+          dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
+        #pragma omp taskwait
+      } else {
+        dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
       }
     }
   } else {
@@ -527,20 +572,15 @@ Moves dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookI
       int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
 
       // run dfs on the new board
-      Moves res = dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves, bestSolution);
-      
-      // no need to continue if the solution is the best as it can get
-      if (res.length == maxPieces) {
-        return res;
-      }
-
-      // if the found solution is better than the one found so far, replace it
-      if (res.length < bestSolution.length) {
-        bestSolution = res;
+      if (currentDepth < threadCount/2) {
+        #pragma omp task
+          dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
+        #pragma omp taskwait
+      } else {
+        dfsSeq(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
       }
     }
   }
-  return bestSolution;
 }
 
 void printSolution(Moves solutionMoves, int k) {
@@ -564,17 +604,28 @@ void printSolution(Moves solutionMoves, int k) {
 }
 
 int main(int argc, char const *argv[]) {
+  if (argc > 1) {
+    threadCount = atoi(argv[1]);
+  } else {
+    threadCount = omp_get_max_threads();
+  }
+  
   int k, maxDepth;
   cin >> k >> maxDepth;
   
   Board board = initBoard(k);
   int remaining = numberOfRemainingPieces(board);
+  bestSolution.length = maxDepth;
   Moves currentMoves;
   currentMoves.length = 0;
-  Moves bestSolution;
-  bestSolution.length = maxDepth;
-  
-  printSolution(dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves, bestSolution), k);
-  
+
+  #pragma omp parallel num_threads(threadCount)
+  {
+    #pragma omp single
+      dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves);
+  }
+
+  printSolution(bestSolution, k);
+
   return 0;
 }
