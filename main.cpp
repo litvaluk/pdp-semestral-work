@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <omp.h>
 #include <cstdio>
+#include <vector>
+#include <list>
 
 #define MAX_K 19
 
@@ -503,8 +505,41 @@ int numberOfRemainingPieces(Board board) {
 
 long long int calls = 0;
 int threadCount;
+int expandDepth;
 int maxPieces;
 Moves bestSolution;
+vector<Board> prepared;
+
+// sequential expansion by bfs
+void prepare(Board board, int depthLimit) {
+  list<Board> queue;
+  queue.push_back(board);
+
+  while((!queue.empty()) && queue.front().depth < depthLimit) {
+    board = queue.front();
+    queue.pop_front();
+
+    if (board.depth%2 == 0) {
+      // rook on the move
+      Moves moves = nextRook(board.rookIndex, board);
+      for (int i = 0; i < moves.length; i++) {
+        queue.push_back(executeMove(board.rookIndex, moves.moves[i], board));
+      }
+    } else {
+      // knight on the move
+      Moves moves = nextKnight(board.knightIndex, board);
+      for (int i = 0; i < moves.length; i++) {
+        queue.push_back(executeMove(board.knightIndex, moves.moves[i], board));
+      }
+    }
+  }
+
+  int queueSize = queue.size();
+  for (int i = 0; i < queueSize; i++) {
+    prepared.push_back(queue.front());
+    queue.pop_front();
+  }
+}
 
 // DFS-BB algorithm for the rook and knight problem using OpenMP tasks
 void dfs(Board board) {
@@ -563,10 +598,18 @@ void printSolution(Moves solutionMoves, int k) {
 }
 
 int main(int argc, char const *argv[]) {
+  // set threadCount
   if (argc > 1) {
     threadCount = atoi(argv[1]);
   } else {
     threadCount = omp_get_max_threads();
+  }
+
+  // set expandDepth
+  if (argc > 2) {
+    expandDepth = atoi(argv[2]);
+  } else {
+    expandDepth = 1;
   }
   
   int k, maxDepth;
@@ -576,7 +619,14 @@ int main(int argc, char const *argv[]) {
   maxPieces = board.remaining;
   bestSolution.length = maxDepth;
 
-  dfs(board);
+  prepare(board, expandDepth);
+  // TODO - sort prepared
+
+  #pragma omp parallel for
+  for (int i = 0; i < prepared.size(); i++){
+    dfs(prepared[i]);
+  }
+
   printSolution(bestSolution, k);
 
   return 0;
