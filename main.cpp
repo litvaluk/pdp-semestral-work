@@ -463,9 +463,33 @@ void printMoves(Moves moves) {
   cout << endl;
 }
 
+// board score computing function
+int computeBoardScore(Board board) {
+  Moves moves;
+  if (board.depth%2 == 0) {
+    moves = nextRook(board.rookIndex, board);
+  } else {
+    moves = nextKnight(board.knightIndex, board);
+  }
+
+  int movesScore = 0;
+  for (int i = 0; i < moves.length; i++) {
+    if (moves.moves[i].value > movesScore) {
+      movesScore = moves.moves[i].value;
+    }
+  }
+
+  return 2*board.remaining - movesScore;
+}
+
 // compare function for move sorting
 bool compareMoves(const Move &a, const Move &b) {
   return a.value > b.value;
+}
+
+// compare function for board sorting
+bool compareBoards(const Board &a, const Board &b) {
+  return computeBoardScore(a) < computeBoardScore(b);
 }
 
 // returns board with performed move (chesspiece move from square A to square B)
@@ -609,7 +633,7 @@ int main(int argc, char const *argv[]) {
   if (argc > 2) {
     expandDepth = atoi(argv[2]);
   } else {
-    expandDepth = 1;
+    expandDepth = 2;
   }
   
   int k, maxDepth;
@@ -620,9 +644,9 @@ int main(int argc, char const *argv[]) {
   bestSolution.length = maxDepth;
 
   prepare(board, expandDepth);
-  // TODO - sort prepared
-
-  #pragma omp parallel for
+  sort(prepared.begin(), prepared.end(), compareBoards);
+  
+  #pragma omp parallel for num_threads(threadCount)
   for (int i = 0; i < prepared.size(); i++){
     dfs(prepared[i]);
   }
