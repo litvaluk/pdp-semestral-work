@@ -1,18 +1,8 @@
 // NI-PDP 20/21 - Lukáš Litvan
 // ========================================================================================
-// Task 2 - OpenMP task parallelism for the rook and knight problem
+// Task 3 - OpenMP data parallelism for the rook and knight problem
 // ========================================================================================
-// The program can be run with one optional argument, which specifies the number of threads
-// used in the computation. When the argument is not specified, the thread count is set
-// using the OpenMP function "omp_get_max_threads".
-// The task parallelism overhead is quite big, so the improvement (task parallelism)
-// is not a big game changer. For example, on input "vaj3.txt", the non-parallel version
-// takes approximately 38 seconds to compute. On this input and using task parallelism, 
-// best results were measured (on my personal computer), when running on 2 threads, while
-// marking dfs calls as OpenMP tasks, when currentDepth is less then threadCount/2. In this
-// case, the running time is approximately 27 seconds. Dfs call count can vary, since the
-// taskwait directive is not used (the algorithm may find different but correct solution
-// each run).
+// 
 
 #include <iostream>
 #include <algorithm>
@@ -30,11 +20,6 @@ enum Square {
   PIECE
 };
 
-struct Board {
-  Square board[MAX_K*MAX_K];
-  int k;
-};
-
 struct Move {
   int index;
   int value;
@@ -45,29 +30,15 @@ struct Moves {
   int length;
 };
 
-Board initBoard(int k) {
-  Board board;
-  board.k = k;
-  for (int i = 0; i < board.k*board.k; i++) {
-    char piece;
-    cin >> piece;
-    switch (piece) {
-    case '-':
-      board.board[i] = EMPTY;
-      break;
-    case 'P':
-      board.board[i] = PIECE;
-      break;
-    case 'V':
-      board.board[i] = ROOK;
-      break;
-    case 'J':
-      board.board[i] = KNIGHT;
-      break;
-    }
-  }
-  return board;
-}
+struct Board {
+  Square board[MAX_K*MAX_K];
+  int k;
+  int depth;
+  int rookIndex;
+  int knightIndex;
+  int remaining;
+  Moves performedMoves;
+};
 
 // finds and returns the position of the rook
 int getRookIndex(Board board) {
@@ -87,6 +58,42 @@ int getKnightIndex(Board board) {
     }
   }
   exit(2);
+}
+
+Board initBoard(int k) {
+  Board board;
+  board.k = k;
+  board.depth = 0;
+  board.remaining = 0;
+
+  Moves performedMoves;
+  performedMoves.length = 0;
+  board.performedMoves = performedMoves;
+  
+  for (int i = 0; i < board.k*board.k; i++) {
+    char piece;
+    cin >> piece;
+    switch (piece) {
+    case '-':
+      board.board[i] = EMPTY;
+      break;
+    case 'P':
+      board.board[i] = PIECE;
+      board.remaining++;
+      break;
+    case 'V':
+      board.board[i] = ROOK;
+      break;
+    case 'J':
+      board.board[i] = KNIGHT;
+      break;
+    }
+  }
+
+  board.rookIndex = getRookIndex(board);
+  board.knightIndex = getKnightIndex(board);
+  
+  return board;
 }
 
 // returns true if the knight can take any piece when positioned at the specified index, otherwise false
@@ -460,9 +467,26 @@ bool compareMoves(const Move &a, const Move &b) {
 }
 
 // returns board with performed move (chesspiece move from square A to square B)
-Board executeMove(int from, int to, Board board) {
-  board.board[to] = board.board[from];
+Board executeMove(int from, Move move, Board board) {
+  if(board.board[move.index] == PIECE) {
+    board.remaining--;
+  }
+  
+  board.board[move.index] = board.board[from];
   board.board[from] = EMPTY;
+  board.depth = board.depth + 1;
+
+  if (from == board.rookIndex) {
+    board.rookIndex = move.index;
+  } else if (from == board.knightIndex) {
+    board.knightIndex = move.index;
+  } else {
+    exit(3);
+  }
+
+  board.performedMoves.moves[board.performedMoves.length] = move;
+  board.performedMoves.length++;
+
   return board;
 }
 
@@ -479,66 +503,41 @@ int numberOfRemainingPieces(Board board) {
 
 long long int calls = 0;
 int threadCount;
+int maxPieces;
 Moves bestSolution;
 
 // DFS-BB algorithm for the rook and knight problem using OpenMP tasks
-void dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIndex, int knightIndex, Moves currentMoves) {
+void dfs(Board board) {
   #pragma omp atomic
     calls++;
   
   // if there are no pieces left, set current moves as a solution, if better
-  if (remaining <= 0 && currentDepth < bestSolution.length) {
+  if (board.remaining <= 0 && board.depth < bestSolution.length) {
     #pragma omp critical
-      bestSolution = currentMoves;
+      bestSolution = board.performedMoves;
     return;
   }
 
   // branch and bound condition
-  if (currentDepth + remaining >= bestSolution.length) {
+  if (board.depth + board.remaining >= bestSolution.length) {
     return;
   }
 
-  if (currentDepth%2 == 0) {
+  if (board.depth%2 == 0) {
     // rook on the move
-    Moves moves = nextRook(rookIndex, board);
+    Moves moves = nextRook(board.rookIndex, board);
     sort(moves.moves, &moves.moves[moves.length], compareMoves);
     for (int i = 0; i < moves.length; i++) {
-      Board executed = executeMove(rookIndex, moves.moves[i].index, board);
-      
-      Moves executedMoves = currentMoves;
-      executedMoves.moves[executedMoves.length] = moves.moves[i];
-      executedMoves.length++;
-
-      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-
-      // run dfs on the new board
-      if (currentDepth < threadCount/2) {
-        #pragma omp task
-          dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
-      } else {
-        dfs(currentDepth+1, executed, maxPieces, newRemaining, moves.moves[i].index, knightIndex, executedMoves);
-      }
+      Board executed = executeMove(board.rookIndex, moves.moves[i], board);
+      dfs(executed);
     }
   } else {
     // knight on the move
-    Moves moves = nextKnight(knightIndex, board);
+    Moves moves = nextKnight(board.knightIndex, board);
     sort(moves.moves, &moves.moves[moves.length], compareMoves);
     for (int i = 0; i < moves.length; i++) {
-      Board executed = executeMove(knightIndex, moves.moves[i].index, board);
-
-      Moves executedMoves = currentMoves;
-      executedMoves.moves[executedMoves.length] = moves.moves[i];
-      executedMoves.length++;
-
-      int newRemaining = board.board[moves.moves[i].index] == PIECE ? remaining-1 : remaining;
-
-      // run dfs on the new board
-      if (currentDepth < threadCount/2) {
-        #pragma omp task
-          dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
-      } else {
-        dfs(currentDepth+1, executed, maxPieces, newRemaining, rookIndex, moves.moves[i].index, executedMoves);
-      }
+      Board executed = executeMove(board.knightIndex, moves.moves[i], board);
+      dfs(executed);
     }
   }
 }
@@ -574,17 +573,10 @@ int main(int argc, char const *argv[]) {
   cin >> k >> maxDepth;
   
   Board board = initBoard(k);
-  int remaining = numberOfRemainingPieces(board);
+  maxPieces = board.remaining;
   bestSolution.length = maxDepth;
-  Moves currentMoves;
-  currentMoves.length = 0;
 
-  #pragma omp parallel num_threads(threadCount)
-  {
-    #pragma omp single
-      dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves);
-  }
-
+  dfs(board);
   printSolution(bestSolution, k);
 
   return 0;
