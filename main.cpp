@@ -2,7 +2,10 @@
 // ========================================================================================
 // Task 3 - OpenMP data parallelism for the rook and knight problem
 // ========================================================================================
-// 
+// This approach has significant impact on the compute time. For comparison, on instance
+// "vaj5.txt", the sequential algorithm solves the problem in cca 30 minutes. Using the
+// data parallelism approach solves the same problem in around 2,5 minutes. Similar
+// compute time improvements were also observed on other instances.
 
 #include <iostream>
 #include <algorithm>
