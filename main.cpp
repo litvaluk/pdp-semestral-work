@@ -1,11 +1,8 @@
 // NI-PDP 20/21 - Lukáš Litvan
 // ========================================================================================
-// Task 3 - OpenMP data parallelism for the rook and knight problem
+// Task 4 - MPI approach for the rook and knight problem
 // ========================================================================================
-// This approach has significant impact on the compute time. For comparison, on instance
-// "vaj5.txt", the sequential algorithm solves the problem in cca 30 minutes. Using the
-// data parallelism approach solves the same problem in around 2,5 minutes. Similar
-// compute time improvements were also observed on other instances.
+// 
 
 #include <iostream>
 #include <algorithm>
@@ -13,8 +10,10 @@
 #include <cstdio>
 #include <vector>
 #include <list>
+#include <mpi.h>
 
 #define MAX_K 19
+#define MASTER_RANK 0
 
 using namespace std;
 
@@ -43,6 +42,12 @@ struct Board {
   int knightIndex;
   int remaining;
   Moves performedMoves;
+};
+
+struct Message {
+  bool end;
+  Board board;
+  Moves best;
 };
 
 // finds and returns the position of the rook
@@ -530,15 +535,11 @@ int numberOfRemainingPieces(Board board) {
   return n;
 }
 
-long long int calls = 0;
-int threadCount;
-int expandDepth;
-int maxPieces;
-Moves bestSolution;
-vector<Board> prepared;
+// long long int calls = 0;
+Moves best;
 
 // sequential expansion by bfs
-void prepare(Board board, int depthLimit) {
+vector<Board> prepare(Board board, int depthLimit) {
   list<Board> queue;
   queue.push_back(board);
 
@@ -561,27 +562,27 @@ void prepare(Board board, int depthLimit) {
     }
   }
 
+  vector<Board> vec;
   int queueSize = queue.size();
   for (int i = 0; i < queueSize; i++) {
-    prepared.push_back(queue.front());
+    vec.push_back(queue.front());
     queue.pop_front();
   }
+
+  return vec;
 }
 
 // DFS-BB algorithm for the rook and knight problem using OpenMP tasks
 void dfs(Board board) {
-  #pragma omp atomic
-    calls++;
-  
   // if there are no pieces left, set current moves as a solution, if better
-  if (board.remaining <= 0 && board.depth < bestSolution.length) {
+  if (board.remaining <= 0 && board.depth < best.length) {
     #pragma omp critical
-      bestSolution = board.performedMoves;
+      best = board.performedMoves;
     return;
   }
 
   // branch and bound condition
-  if (board.depth + board.remaining >= bestSolution.length) {
+  if (board.depth + board.remaining >= best.length) {
     return;
   }
 
@@ -605,7 +606,7 @@ void dfs(Board board) {
 }
 
 void printSolution(Moves solutionMoves, int k) {
-  cout << "Total moves: " << solutionMoves.length << endl << "Number of dfs function calls: " << calls << endl << "Moves:" << endl;
+  cout << "Total moves: " << solutionMoves.length << endl << "Moves:" << endl;
   for (int i = 0; i < solutionMoves.length; i++) {
     int rowIndex = solutionMoves.moves[i].index / k;
     int colIndex = solutionMoves.moves[i].index % k;
@@ -624,37 +625,114 @@ void printSolution(Moves solutionMoves, int k) {
   }  
 }
 
-int main(int argc, char const *argv[]) {
-  // set threadCount
-  if (argc > 1) {
-    threadCount = atoi(argv[1]);
+int main(int argc, char** argv) {
+  MPI_Init(&argc, &argv);
+
+  int numberOfProcesses;
+  int processRank;
+  MPI_Comm_size(MPI_COMM_WORLD, &numberOfProcesses);
+  MPI_Comm_rank(MPI_COMM_WORLD, &processRank);
+
+  if (processRank == MASTER_RANK) {
+      // ===== master process ======
+      double startTime = MPI_Wtime();
+
+      int threadCount;
+      int expandDepth;
+
+      // set threadCount
+      if (argc > 1) {
+        threadCount = atoi(argv[1]);
+      } else {
+        threadCount = omp_get_max_threads();
+      }
+
+      // set expandDepth
+      if (argc > 2) {
+        expandDepth = atoi(argv[2]);
+      } else {
+        expandDepth = 2;
+      }
+
+      int k, maxDepth;
+      cin >> k >> maxDepth;
+      
+      best.length = maxDepth;
+
+      Board board = initBoard(k);
+      int maxPieces = board.remaining;
+      vector<Board> expanded = prepare(board, 0);
+      sort(expanded.begin(), expanded.end(), compareBoards);
+
+      int workingSlaves = 0;
+      int numberOfProcesses;
+      MPI_Comm_size(MPI_COMM_WORLD, &numberOfProcesses);
+      int numberOfSlaves = numberOfProcesses - 1;
+
+      for (int i = 0; i < expanded.size(); i++) {
+        Message message;
+        message.end = false;
+        message.board = expanded[i];
+        message.best = best;
+
+        MPI_Send(&message, sizeof(message), MPI_PACKED, 1, i, MPI_COMM_WORLD);
+        workingSlaves++;
+        if (workingSlaves >= numberOfSlaves) {
+          Moves received;
+          MPI_Status status;
+          MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+          if (received.length < best.length) {
+            best = received;
+          }
+          workingSlaves--;
+        }
+      }
+
+      for (int i = 0; i < numberOfSlaves; i++) {
+        Message message;
+        message.end = true;
+        MPI_Send(&message, sizeof(message), MPI_PACKED, i+1, i+1, MPI_COMM_WORLD);
+      }
+
+      for (int i = 0; i < numberOfSlaves; i++) {
+        Moves received;
+        MPI_Status status;
+        MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        if (received.length < best.length) {
+          best = received;
+        }
+      }
+
+      printSolution(best, k);
+      double endTime = MPI_Wtime();
+      cout << "Time: " << endTime - startTime << " seconds" << endl;
   } else {
-    threadCount = omp_get_max_threads();
+      // ===== slave process =====
+      int end = false;
+
+      while (!end) {
+        Message received;
+        MPI_Status status;
+        MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+
+        if(received.end) {
+          end = true;
+          MPI_Send(&best, sizeof(best), MPI_PACKED, 0, processRank, MPI_COMM_WORLD);
+        } else {
+          vector<Board> expanded = prepare(received.board, 0);
+          best = received.best;
+
+          #pragma omp parallel for // num_threads(threadCount)
+          for (int i = 0; i < expanded.size(); i++){
+            dfs(expanded[i]);
+          }
+
+          MPI_Send(&best, sizeof(best), MPI_PACKED, 0, processRank, MPI_COMM_WORLD);
+        }
+      }
+
   }
 
-  // set expandDepth
-  if (argc > 2) {
-    expandDepth = atoi(argv[2]);
-  } else {
-    expandDepth = 2;
-  }
-  
-  int k, maxDepth;
-  cin >> k >> maxDepth;
-  
-  Board board = initBoard(k);
-  maxPieces = board.remaining;
-  bestSolution.length = maxDepth;
-
-  prepare(board, expandDepth);
-  sort(prepared.begin(), prepared.end(), compareBoards);
-  
-  #pragma omp parallel for num_threads(threadCount)
-  for (int i = 0; i < prepared.size(); i++){
-    dfs(prepared[i]);
-  }
-
-  printSolution(bestSolution, k);
-
+  MPI_Finalize();
   return 0;
 }
