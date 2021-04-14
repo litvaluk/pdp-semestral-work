@@ -46,6 +46,8 @@ struct Board {
 
 struct Message {
   bool end;
+  int expandDepth;
+  int threadCount;
   Board board;
   Moves best;
 };
@@ -638,7 +640,8 @@ int main(int argc, char** argv) {
       double startTime = MPI_Wtime();
 
       int threadCount;
-      int expandDepth;
+      int firstExpandDepth;
+      int secondExpandDepth;
 
       // set threadCount
       if (argc > 1) {
@@ -647,11 +650,18 @@ int main(int argc, char** argv) {
         threadCount = omp_get_max_threads();
       }
 
-      // set expandDepth
+      // set firstExpandDepth
       if (argc > 2) {
-        expandDepth = atoi(argv[2]);
+        firstExpandDepth = atoi(argv[2]);
       } else {
-        expandDepth = 2;
+        firstExpandDepth = 2;
+      }
+
+      // set secondExpandDepth
+      if (argc > 3) {
+        secondExpandDepth = atoi(argv[3]);
+      } else {
+        secondExpandDepth = 3;
       }
 
       int k, maxDepth;
@@ -661,12 +671,14 @@ int main(int argc, char** argv) {
 
       Board board = initBoard(k);
       int maxPieces = board.remaining;
-      vector<Board> expanded = prepare(board, 1);
+      vector<Board> expanded = prepare(board, firstExpandDepth);
       sort(expanded.begin(), expanded.end(), compareBoards);
 
       for (int i = 1; i < numberOfProcesses; i++) {
         Message message;
         message.end = false;
+        message.expandDepth = secondExpandDepth;
+        message.threadCount = threadCount;
         message.board = expanded[i-1];
         message.best = best;
         MPI_Send(&message, sizeof(message), MPI_PACKED, i, i, MPI_COMM_WORLD);
@@ -681,6 +693,8 @@ int main(int argc, char** argv) {
         }
         Message message;
         message.end = false;
+        message.expandDepth = secondExpandDepth;
+        message.threadCount = threadCount;
         message.board = expanded[i-1];
         message.best = best;
         MPI_Send(&message, sizeof(message), MPI_PACKED, status.MPI_SOURCE, i, MPI_COMM_WORLD);
@@ -716,10 +730,10 @@ int main(int argc, char** argv) {
         if(received.end) {
           end = true;
         } else {
-          vector<Board> expanded = prepare(received.board, 2);
+          vector<Board> expanded = prepare(received.board, received.expandDepth);
           best = received.best;
 
-          #pragma omp parallel for // num_threads(threadCount)
+          #pragma omp parallel for num_threads(received.threadCount)
           for (int i = 0; i < expanded.size(); i++){
             dfs(expanded[i]);
           }
