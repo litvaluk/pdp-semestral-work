@@ -661,46 +661,44 @@ int main(int argc, char** argv) {
 
       Board board = initBoard(k);
       int maxPieces = board.remaining;
-      vector<Board> expanded = prepare(board, 0);
+      vector<Board> expanded = prepare(board, 1);
       sort(expanded.begin(), expanded.end(), compareBoards);
 
-      int workingSlaves = 0;
-      int numberOfProcesses;
-      MPI_Comm_size(MPI_COMM_WORLD, &numberOfProcesses);
-      int numberOfSlaves = numberOfProcesses - 1;
-
-      for (int i = 0; i < expanded.size(); i++) {
+      for (int i = 1; i < numberOfProcesses; i++) {
         Message message;
         message.end = false;
-        message.board = expanded[i];
+        message.board = expanded[i-1];
         message.best = best;
-
-        MPI_Send(&message, sizeof(message), MPI_PACKED, 1, i, MPI_COMM_WORLD);
-        workingSlaves++;
-        if (workingSlaves >= numberOfSlaves) {
-          Moves received;
-          MPI_Status status;
-          MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-          if (received.length < best.length) {
-            best = received;
-          }
-          workingSlaves--;
-        }
+        MPI_Send(&message, sizeof(message), MPI_PACKED, i, i, MPI_COMM_WORLD);
       }
 
-      for (int i = 0; i < numberOfSlaves; i++) {
-        Message message;
-        message.end = true;
-        MPI_Send(&message, sizeof(message), MPI_PACKED, i+1, i+1, MPI_COMM_WORLD);
-      }
-
-      for (int i = 0; i < numberOfSlaves; i++) {
+      for (int i = numberOfProcesses - 1; i < expanded.size(); i++) {
         Moves received;
         MPI_Status status;
         MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
         if (received.length < best.length) {
           best = received;
         }
+        Message message;
+        message.end = false;
+        message.board = expanded[i-1];
+        message.best = best;
+        MPI_Send(&message, sizeof(message), MPI_PACKED, status.MPI_SOURCE, i, MPI_COMM_WORLD);
+      }
+
+      for (int i = 1; i < numberOfProcesses; i++) {
+        Moves received;
+        MPI_Status status;
+        MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+        if (received.length < best.length) {
+          best = received;
+        }
+      }
+
+      for (int i = 1; i < numberOfProcesses; i++) {
+        Message message;
+        message.end = true;
+        MPI_Send(&message, sizeof(message), MPI_PACKED, i, i, MPI_COMM_WORLD);
       }
 
       printSolution(best, k);
@@ -717,9 +715,8 @@ int main(int argc, char** argv) {
 
         if(received.end) {
           end = true;
-          MPI_Send(&best, sizeof(best), MPI_PACKED, 0, processRank, MPI_COMM_WORLD);
         } else {
-          vector<Board> expanded = prepare(received.board, 0);
+          vector<Board> expanded = prepare(received.board, 2);
           best = received.best;
 
           #pragma omp parallel for // num_threads(threadCount)
