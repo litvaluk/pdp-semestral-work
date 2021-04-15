@@ -613,7 +613,7 @@ vector<Board> prepare(Board board, int depthLimit) {
 
 Moves best;
 
-// DFS-BB algorithm for the rook and knight problem using OpenMP tasks
+// DFS-BB algorithm for the rook and knight problem
 void dfs(Board board) {
   // if there are no pieces left, set current moves as a solution, if better
   if (board.remaining <= 0 && board.depth < best.length) {
