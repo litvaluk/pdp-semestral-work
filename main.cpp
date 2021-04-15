@@ -1,8 +1,15 @@
 // NI-PDP 20/21 - Lukáš Litvan
 // ========================================================================================
-// Task 4 - MPI approach for the rook and knight problem
+// Task 4 - MPI approach with data parallelism for the rook and knight problem
 // ========================================================================================
-// 
+// Master slave moodel implementation using the OpenMPI (High Performance Message Passing
+// Library). Master performs initial expansion of the state space using BFS to a certain
+// depth and then sends the expanded states to the slaves. Each slave solves the part
+// problem using data parallelism with OpenMP (BFS expansion, parallel for).
+// There are 3 parameters: thread count (for parallel for), first expand depth (depth
+// to expand at master), second expand depth (depth to expand at slave).
+// When running on higher core count, it is more effective to set higher expand depth
+// (both first and second).
 
 #include <iostream>
 #include <algorithm>
@@ -51,6 +58,39 @@ struct Message {
   Board board;
   Moves best;
 };
+
+struct Parameters {
+  int threadCount;
+  int firstExpandDepth;
+  int secondExpandDepth;
+};
+
+Parameters setParameters(int argc, char** argv) {
+  Parameters parameters;
+
+  // set threadCount
+  if (argc > 1) {
+    parameters.threadCount = atoi(argv[1]);
+  } else {
+    parameters.threadCount = omp_get_max_threads();
+  }
+
+  // set firstExpandDepth
+  if (argc > 2) {
+    parameters.firstExpandDepth = atoi(argv[2]);
+  } else {
+    parameters.firstExpandDepth = 2;
+  }
+
+  // set secondExpandDepth
+  if (argc > 3) {
+    parameters.secondExpandDepth = atoi(argv[3]);
+  } else {
+    parameters.secondExpandDepth = 3;
+  }
+
+  return parameters;
+}
 
 // finds and returns the position of the rook
 int getRookIndex(Board board) {
@@ -537,9 +577,6 @@ int numberOfRemainingPieces(Board board) {
   return n;
 }
 
-// long long int calls = 0;
-Moves best;
-
 // sequential expansion by bfs
 vector<Board> prepare(Board board, int depthLimit) {
   list<Board> queue;
@@ -573,6 +610,8 @@ vector<Board> prepare(Board board, int depthLimit) {
 
   return vec;
 }
+
+Moves best;
 
 // DFS-BB algorithm for the rook and knight problem using OpenMP tasks
 void dfs(Board board) {
@@ -639,30 +678,7 @@ int main(int argc, char** argv) {
       // ===== master process ======
       double startTime = MPI_Wtime();
 
-      int threadCount;
-      int firstExpandDepth;
-      int secondExpandDepth;
-
-      // set threadCount
-      if (argc > 1) {
-        threadCount = atoi(argv[1]);
-      } else {
-        threadCount = omp_get_max_threads();
-      }
-
-      // set firstExpandDepth
-      if (argc > 2) {
-        firstExpandDepth = atoi(argv[2]);
-      } else {
-        firstExpandDepth = 2;
-      }
-
-      // set secondExpandDepth
-      if (argc > 3) {
-        secondExpandDepth = atoi(argv[3]);
-      } else {
-        secondExpandDepth = 3;
-      }
+      Parameters parameters = setParameters(argc, argv);
 
       int k, maxDepth;
       cin >> k >> maxDepth;
@@ -671,19 +687,21 @@ int main(int argc, char** argv) {
 
       Board board = initBoard(k);
       int maxPieces = board.remaining;
-      vector<Board> expanded = prepare(board, firstExpandDepth);
+      vector<Board> expanded = prepare(board, parameters.firstExpandDepth);
       sort(expanded.begin(), expanded.end(), compareBoards);
 
+      // send message to each slave
       for (int i = 1; i < numberOfProcesses; i++) {
         Message message;
         message.end = false;
-        message.expandDepth = secondExpandDepth;
-        message.threadCount = threadCount;
+        message.expandDepth = parameters.secondExpandDepth;
+        message.threadCount = parameters.threadCount;
         message.board = expanded[i-1];
         message.best = best;
         MPI_Send(&message, sizeof(message), MPI_PACKED, i, i, MPI_COMM_WORLD);
       }
 
+      // when message from any slave is received, send another message to the same slave (until expanded is empty)
       for (int i = numberOfProcesses - 1; i < expanded.size(); i++) {
         Moves received;
         MPI_Status status;
@@ -693,13 +711,14 @@ int main(int argc, char** argv) {
         }
         Message message;
         message.end = false;
-        message.expandDepth = secondExpandDepth;
-        message.threadCount = threadCount;
+        message.expandDepth = parameters.secondExpandDepth;
+        message.threadCount = parameters.threadCount;
         message.board = expanded[i-1];
         message.best = best;
         MPI_Send(&message, sizeof(message), MPI_PACKED, status.MPI_SOURCE, i, MPI_COMM_WORLD);
       }
 
+      // wait for messages from all slaves
       for (int i = 1; i < numberOfProcesses; i++) {
         Moves received;
         MPI_Status status;
@@ -709,6 +728,7 @@ int main(int argc, char** argv) {
         }
       }
 
+      // send end flag to all slaves
       for (int i = 1; i < numberOfProcesses; i++) {
         Message message;
         message.end = true;
@@ -720,15 +740,12 @@ int main(int argc, char** argv) {
       cout << "Time: " << endTime - startTime << " seconds" << endl;
   } else {
       // ===== slave process =====
-      int end = false;
-
-      while (!end) {
+      while (true) {
         Message received;
         MPI_Status status;
         MPI_Recv(&received, sizeof(received), MPI_PACKED, MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
         if(received.end) {
-          end = true;
+          break;
         } else {
           vector<Board> expanded = prepare(received.board, received.expandDepth);
           best = received.best;
@@ -741,7 +758,6 @@ int main(int argc, char** argv) {
           MPI_Send(&best, sizeof(best), MPI_PACKED, 0, processRank, MPI_COMM_WORLD);
         }
       }
-
   }
 
   MPI_Finalize();
