@@ -12,6 +12,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include <chrono>
 
 #define MAX_K 19
 
@@ -566,7 +567,9 @@ void printSolution(Moves solutionMoves, int k) {
 int main(int argc, char const *argv[]) {
   int k, maxDepth;
   cin >> k >> maxDepth;
-  
+
+  auto startTime = chrono::high_resolution_clock::now();
+
   Board board = initBoard(k);
   int remaining = numberOfRemainingPieces(board);
   Moves currentMoves;
@@ -576,5 +579,8 @@ int main(int argc, char const *argv[]) {
   
   printSolution(dfs(0, board, remaining, remaining, getRookIndex(board), getKnightIndex(board), currentMoves, bestSolution), k);
   
+  auto endTime = chrono::high_resolution_clock::now();
+  cout << "Time: " << chrono::duration<double>(endTime - startTime).count() << " seconds" << endl;
+
   return 0;
 }
