@@ -646,7 +646,10 @@ void dfs(Board board) {
   }
 }
 
-void printSolution(Moves solutionMoves, int k) {
+void printSolution(Moves solutionMoves, int k, Parameters parameters) {
+  cout << "Thread count: " << parameters.threadCount << endl;
+  cout << "First expand depth: " << parameters.firstExpandDepth << endl;
+  cout << "Second expand depth: " << parameters.secondExpandDepth << endl;
   cout << "Total moves: " << solutionMoves.length << endl << "Moves:" << endl;
   for (int i = 0; i < solutionMoves.length; i++) {
     int rowIndex = solutionMoves.moves[i].index / k;
@@ -676,12 +679,12 @@ int main(int argc, char** argv) {
 
   if (processRank == MASTER_RANK) {
       // ===== master process ======
-      double startTime = MPI_Wtime();
-
       Parameters parameters = setParameters(argc, argv);
 
       int k, maxDepth;
       cin >> k >> maxDepth;
+
+      double startTime = MPI_Wtime();
       
       best.length = maxDepth;
 
@@ -735,7 +738,8 @@ int main(int argc, char** argv) {
         MPI_Send(&message, sizeof(message), MPI_PACKED, i, i, MPI_COMM_WORLD);
       }
 
-      printSolution(best, k);
+      printSolution(best, k, parameters);
+
       double endTime = MPI_Wtime();
       cout << "Time: " << endTime - startTime << " seconds" << endl;
   } else {
