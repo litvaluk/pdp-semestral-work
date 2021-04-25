@@ -544,6 +544,7 @@ void dfs(int currentDepth, Board board, int maxPieces, int remaining, int rookIn
 }
 
 void printSolution(Moves solutionMoves, int k) {
+  cout << "Thread count: " << threadCount << endl;
   cout << "Total moves: " << solutionMoves.length << endl << "Number of dfs function calls: " << calls << endl << "Moves:" << endl;
   for (int i = 0; i < solutionMoves.length; i++) {
     int rowIndex = solutionMoves.moves[i].index / k;
@@ -572,6 +573,8 @@ int main(int argc, char const *argv[]) {
   
   int k, maxDepth;
   cin >> k >> maxDepth;
+
+  double startTime = omp_get_wtime();
   
   Board board = initBoard(k);
   int remaining = numberOfRemainingPieces(board);
@@ -586,6 +589,9 @@ int main(int argc, char const *argv[]) {
   }
 
   printSolution(bestSolution, k);
+
+  double endTime = omp_get_wtime();
+  cout << "Time: " << endTime - startTime << " seconds" << endl;
 
   return 0;
 }
